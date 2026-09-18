@@ -11,6 +11,14 @@ from typing import Any
 
 from . import __version__
 from .api import KoushareClient, available_qualities, choose_media
+from .assets import (
+    cover_path,
+    cover_url,
+    description_html,
+    download_asset,
+    subtitle_path,
+    subtitle_urls,
+)
 from .auth import CredentialStore
 from .downloader import backend_status, download_media, redact_url
 from .errors import ApiError, DownloadError, KoushareError
@@ -470,6 +478,36 @@ def _write_info_sidecar(row: dict[str, Any], status: str, backend: str | None) -
     return str(sidecar)
 
 
+def _write_requested_sidecars(row: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    video_path = Path(row["path"])
+    metadata = row["metadata"]
+    live_metadata = row["live_metadata"]
+    result: dict[str, Any] = {}
+
+    if args.write_cover or args.write_sidecars:
+        url = cover_url(metadata, live_metadata)
+        if url:
+            result["cover"] = str(download_asset(url, cover_path(video_path, url), timeout=args.timeout))
+
+    if args.write_description or args.write_sidecars:
+        description = description_html(metadata, live_metadata)
+        if description:
+            path = video_path.with_suffix(".description.html")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(description, encoding="utf-8")
+            result["description"] = str(path)
+
+    if args.write_subs or args.write_sidecars:
+        paths: list[str] = []
+        for index, (hint, url) in enumerate(subtitle_urls(metadata, live_metadata), start=1):
+            path = subtitle_path(video_path, hint, url, index)
+            paths.append(str(download_asset(url, path, timeout=args.timeout)))
+        if paths:
+            result["subtitles"] = paths
+
+    return result
+
+
 def cmd_download(args: argparse.Namespace) -> int:
     rows = _make_plan(args)
     results: list[dict[str, Any]] = []
@@ -478,7 +516,7 @@ def cmd_download(args: argparse.Namespace) -> int:
         output = Path(row["path"])
         status = "planned" if args.dry_run else "downloaded"
         selected_backend: str | None = None
-        sidecar: str | None = None
+        sidecars: dict[str, Any] = {}
 
         if args.dry_run:
             status = "dry-run"
@@ -495,8 +533,10 @@ def cmd_download(args: argparse.Namespace) -> int:
                 quiet=args.json or args.quiet,
             )
 
-        if args.write_info_json and status != "dry-run":
-            sidecar = _write_info_sidecar(row, status, selected_backend)
+        if status != "dry-run":
+            if args.write_info_json or args.write_sidecars:
+                sidecars["info_json"] = _write_info_sidecar(row, status, selected_backend)
+            sidecars.update(_write_requested_sidecars(row, args))
 
         result = {
             "status": status,
@@ -509,8 +549,7 @@ def cmd_download(args: argparse.Namespace) -> int:
             "path": str(output),
             "backend": selected_backend,
         }
-        if sidecar:
-            result["info_json"] = sidecar
+        result.update(sidecars)
         results.append(result)
 
         if not args.json and args.dry_run:
@@ -732,6 +771,14 @@ def build_parser() -> argparse.ArgumentParser:
     exists.add_argument("--overwrite", action="store_true", help="replace an existing output file")
     exists.add_argument("--skip-existing", action="store_true", help="treat an existing output file as success")
     p_download.add_argument("--write-info-json", action="store_true", help="write a metadata sidecar next to each downloaded file")
+    p_download.add_argument("--write-cover", action="store_true", help="save the cover image next to each downloaded file")
+    p_download.add_argument("--write-description", action="store_true", help="save the available introduction as HTML")
+    p_download.add_argument("--write-subs", action="store_true", help="save subtitle/caption files exposed by Koushare, if any")
+    p_download.add_argument(
+        "--write-sidecars",
+        action="store_true",
+        help="save info JSON, cover, description, and any available subtitles",
+    )
     p_download.add_argument("--dry-run", action="store_true", help="resolve selections and output paths but do not download")
     p_download.add_argument("--quiet", action="store_true", help="suppress downloader progress output")
     p_download.add_argument("--json", action="store_true", help="emit a machine-readable result; also suppress downloader progress")

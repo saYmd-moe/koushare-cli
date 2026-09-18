@@ -1,4 +1,5 @@
 import json
+from argparse import Namespace
 from pathlib import Path
 
 import koushare_cli.cli as cli
@@ -93,3 +94,37 @@ def test_name_rejected_for_multiple_videos(monkeypatch, capsys):
     err = json.loads(capsys.readouterr().err)
     assert err["ok"] is False
     assert "exactly one" in err["error"]
+
+
+def test_write_sidecars_uses_final_video_basename(monkeypatch, tmp_path):
+    downloaded = []
+
+    def fake_download(url, output, *, timeout):
+        downloaded.append((url, output, timeout))
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"asset")
+        return output
+
+    monkeypatch.setattr(cli, "download_asset", fake_download)
+    video_path = tmp_path / "Formatted Talk [700001].mp4"
+    row = {
+        "path": str(video_path),
+        "metadata": {
+            "coverUrl": "https://cdn.example/cover.png",
+            "blurb": "<p>Abstract</p>",
+            "subtitleUrl": "https://cdn.example/subtitles/en.vtt",
+        },
+        "live_metadata": {},
+    }
+    args = Namespace(
+        write_cover=False,
+        write_description=False,
+        write_subs=False,
+        write_sidecars=True,
+        timeout=12,
+    )
+    result = cli._write_requested_sidecars(row, args)
+    assert Path(result["cover"]).name == "Formatted Talk [700001].cover.png"
+    assert Path(result["description"]).name == "Formatted Talk [700001].description.html"
+    assert Path(result["subtitles"][0]).name == "Formatted Talk [700001].subtitle-1.vtt"
+    assert len(downloaded) == 2

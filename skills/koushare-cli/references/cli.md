@@ -205,6 +205,8 @@ Use `--overwrite` only when the user explicitly wants replacement.
 
 `--write-info-json` writes `<video>.mp4.info.json`. The sidecar contains normalized download metadata plus Koushare metadata used for naming. It intentionally does not persist the signed playback URL.
 
+`--write-sidecars` also saves the available cover, HTML description, and subtitle/caption files. Use `--write-cover`, `--write-description`, or `--write-subs` to request them individually. Optional assets that are not exposed by Koushare are skipped without failing the video download.
+
 ## Exit codes
 
 ```text

@@ -54,6 +54,9 @@ Use `ksdl` non-interactively. Prefer `--json` whenever the result will be consum
      --skip-existing --write-info-json --json
    ```
 
+   Use `--write-sidecars` instead of `--write-info-json` when the user also
+   wants every available cover, description, and subtitle/caption file.
+
 5. Treat exit code `0` as success. With `--json`, parse stdout for successful results. On known failures, `ksdl` exits with code `2` and writes a JSON error object to stderr.
 
 ## Output and naming rules

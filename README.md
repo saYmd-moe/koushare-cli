@@ -236,6 +236,30 @@ ksdl download URL --video-id VIDEO_ID --dir /data \
 
 This creates `video.mp4.info.json` next to the media file.
 
+Save every available sidecar in one operation:
+
+```bash
+ksdl download URL --video-id VIDEO_ID --dir /data \
+  --skip-existing --write-sidecars
+```
+
+Depending on what Koushare exposes for that item, this creates files such as:
+
+```text
+Example talk [VIDEO_ID].mp4
+Example talk [VIDEO_ID].mp4.info.json
+Example talk [VIDEO_ID].cover.png
+Example talk [VIDEO_ID].description.html
+Example talk [VIDEO_ID].subtitle-1.vtt
+```
+
+The equivalent granular switches are `--write-info-json`, `--write-cover`,
+`--write-description`, and `--write-subs`. Missing optional data is skipped:
+for example, `--write-subs` succeeds without creating a subtitle file when the
+API does not expose one. Sidecars use the final sanitized/template-rendered
+video basename, so batch naming remains consistent across Linux, macOS, and
+Windows. The info JSON never stores the resolved signed media URL.
+
 ## Resolve without downloading
 
 ```bash
