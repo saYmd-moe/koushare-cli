@@ -54,6 +54,10 @@ def _normalized_playback_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _is_fastback(item: dict[str, Any]) -> bool:
+    return item.get("isFastBack") is True
+
+
 def _live_listing(live_id: str, info: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "live_id": live_id,
@@ -130,7 +134,11 @@ def _resolve_current(
             ResolvedVideo(
                 str(selected_video),
                 title,
-                client.live_playback(target.live_id, str(selected_video)),
+                client.live_playback(
+                    target.live_id,
+                    str(selected_video),
+                    fastback=_is_fastback(match),
+                ),
                 live_id=target.live_id,
                 item=match,
                 live_info=live_info,
@@ -157,7 +165,7 @@ def _resolve_current(
             ResolvedVideo(
                 vid,
                 title,
-                client.live_playback(target.live_id, vid),
+                client.live_playback(target.live_id, vid, fastback=_is_fastback(item)),
                 live_id=target.live_id,
                 item=item,
                 live_info=live_info,

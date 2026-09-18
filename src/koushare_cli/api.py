@@ -225,9 +225,27 @@ class KoushareClient:
     def live_playbacks(self, live_id: str, *, page_size: int = 200) -> list[dict[str, Any]]:
         params = {"liveId": int(live_id), "pageNum": 1, "pageSize": page_size}
         payload = self._get("/live/v1/user/livePlayback/list", params)
-        return self._extract_list(payload.get("data"))
+        items = self._extract_list(payload.get("data"))
+        if items:
+            return items
 
-    def live_playback(self, live_id: str, video_id: str) -> dict[str, Any]:
+        # Koushare exposes freshly ended broadcasts as "fast playback" items,
+        # through a separate API from the normal replay catalogue.  The web UI
+        # uses this endpoint when isFastPlayback is true and videoNumber is 0.
+        payload = self._get("/live/v2/live/fastback/list", {"liveId": int(live_id)})
+        fastbacks = self._extract_list(payload.get("data"))
+        return [{**item, "isFastBack": True} for item in fastbacks]
+
+    def live_playback(self, live_id: str, video_id: str, *, fastback: bool = False) -> dict[str, Any]:
+        if fastback:
+            body = {"liveId": int(live_id), "fastBackId": int(video_id)}
+            payload = self._post("/live/v2/live/fastback/play", body=body)
+            data = payload.get("data")
+            if not isinstance(data, dict):
+                return {}
+            url = data.get("fastbackUrl")
+            return {**data, "url": url} if isinstance(url, str) and url else data
+
         params = {"videoId": video_id}
         payload = self._post(
             f"/live/v2/live/playback/{live_id}",

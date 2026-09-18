@@ -31,6 +31,16 @@ class Session:
         return Response(self.payload)
 
 
+class SequenceSession(Session):
+    def __init__(self, payloads):
+        super().__init__(None)
+        self.payloads = iter(payloads)
+
+    def get(self, url, **kwargs):
+        self.calls.append(("GET", url, kwargs))
+        return Response(next(self.payloads))
+
+
 def token_payload(access="access", refresh="refresh"):
     return {
         "code": 200000,
@@ -110,3 +120,42 @@ def test_v2_video_authorization_and_playback_shape():
     playback = KoushareClient(session=playback_session).video_playback_v2("900002", ticket="ticket")
     assert playback["playbackUrls"][0]["labelEn"] == "HD"
     assert playback_session.calls[0][2]["params"] == {"videoId": "900002", "ticket": "ticket"}
+
+
+def test_live_playbacks_falls_back_to_fastback_list():
+    session = SequenceSession(
+        [
+            {"code": 200000, "data": []},
+            {
+                "code": 200000,
+                "data": [{"id": 700001, "name": "Replay 2", "duration": 4591, "views": 72}],
+            },
+        ]
+    )
+    items = KoushareClient(session=session).live_playbacks("900001")
+    assert items == [
+        {
+            "id": 700001,
+            "name": "Replay 2",
+            "duration": 4591,
+            "views": 72,
+            "isFastBack": True,
+        }
+    ]
+    assert session.calls[1][1].endswith("/live/v2/live/fastback/list")
+    assert session.calls[1][2]["params"] == {"liveId": 900001}
+
+
+def test_fastback_playback_is_normalized_to_direct_url():
+    session = Session(
+        {
+            "code": 200000,
+            "data": {"fastbackUrl": "https://cdn.example/replay.m3u8", "views": 73},
+        }
+    )
+    playback = KoushareClient(session=session).live_playback("900001", "700001", fastback=True)
+    assert playback["url"] == "https://cdn.example/replay.m3u8"
+    method, url, kwargs = session.calls[0]
+    assert method == "POST"
+    assert url.endswith("/live/v2/live/fastback/play")
+    assert kwargs["json"] == {"liveId": 900001, "fastBackId": 700001}

@@ -25,6 +25,8 @@ from a Koushare page you are authorized to access.
 
 A `live/details/<id>` URL **does not need a `vid`**. `ksdl` can list all replay
 videos attached to that page and then select one or download all of them.
+Normal replay entries and the site's newer “fast playback” entries are detected
+through their respective APIs and presented through the same commands.
 
 ## Install
 

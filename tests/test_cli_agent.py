@@ -14,7 +14,7 @@ class FakeClient:
             {"videoId": "102", "title": "Second Talk", "speakerName": "Bob"},
         ]
 
-    def live_playback(self, live_id, video_id):
+    def live_playback(self, live_id, video_id, *, fastback=False):
         return {
             "playbackUrls": [
                 {
