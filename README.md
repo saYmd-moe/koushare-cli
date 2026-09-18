@@ -20,6 +20,9 @@ https://www.koushare.com/live/details/LIVE_ID?vid=VIDEO_ID
 https://www.koushare.com/video/details/VIDEO_ID
 ```
 
+In every example below, replace `LIVE_ID`, `VIDEO_ID`, and `ROOM_ID` with IDs
+from a Koushare page you are authorized to access.
+
 A `live/details/<id>` URL **does not need a `vid`**. `ksdl` can list all replay
 videos attached to that page and then select one or download all of them.
 
