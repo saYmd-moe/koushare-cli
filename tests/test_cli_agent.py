@@ -128,3 +128,25 @@ def test_write_sidecars_uses_final_video_basename(monkeypatch, tmp_path):
     assert Path(result["description"]).name == "Formatted Talk [700001].description.html"
     assert Path(result["subtitles"][0]).name == "Formatted Talk [700001].subtitle-1.vtt"
     assert len(downloaded) == 2
+
+
+def test_generic_replay_title_is_prefixed_with_live_title():
+    assert (
+        cli._resolved_live_video_title(
+            {"id": 700001, "name": "回放2", "isFastBack": True},
+            {"title": "Complete Lecture Title"},
+            "fallback",
+        )
+        == "Complete Lecture Title - 回放2"
+    )
+
+
+def test_meaningful_replay_title_is_not_changed():
+    assert (
+        cli._resolved_live_video_title(
+            {"videoId": 700001, "title": "Invited Talk"},
+            {"title": "Conference Session"},
+            "fallback",
+        )
+        == "Invited Talk"
+    )

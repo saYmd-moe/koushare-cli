@@ -4,6 +4,7 @@ import argparse
 import getpass
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,6 +52,20 @@ def _video_title(item: dict[str, Any], fallback: str) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return fallback
+
+
+def _resolved_live_video_title(
+    item: dict[str, Any],
+    live_info: dict[str, Any],
+    fallback: str,
+) -> str:
+    item_title = _video_title(item, "")
+    live_title = _video_title(live_info, fallback)
+    if not item_title:
+        return live_title
+    if re.fullmatch(r"(?:回放|回看|录像|replay|playback)\s*\d*", item_title, re.IGNORECASE):
+        return f"{live_title} - {item_title}" if live_title and live_title != item_title else item_title
+    return item_title
 
 
 def _normalized_playback_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -136,8 +151,7 @@ def _resolve_current(
     items = client.live_playbacks(target.live_id)
     if selected_video:
         match = next((x for x in items if _video_id(x) == str(selected_video)), {})
-        fallback = _video_title(live_info, f"koushare_{selected_video}")
-        title = _video_title(match, fallback)
+        title = _resolved_live_video_title(match, live_info, f"koushare_{selected_video}")
         return [
             ResolvedVideo(
                 str(selected_video),
@@ -168,7 +182,7 @@ def _resolve_current(
         vid = _video_id(item)
         if not vid:
             continue
-        title = _video_title(item, f"koushare_{vid}")
+        title = _resolved_live_video_title(item, live_info, f"koushare_{vid}")
         resolved.append(
             ResolvedVideo(
                 vid,
