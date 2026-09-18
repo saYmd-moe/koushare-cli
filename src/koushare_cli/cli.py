@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import sys
@@ -10,6 +11,7 @@ from typing import Any
 
 from . import __version__
 from .api import KoushareClient, available_qualities, choose_media
+from .auth import CredentialStore
 from .downloader import backend_status, download_media, redact_url
 from .errors import ApiError, DownloadError, KoushareError
 from .legacy import LegacyClient
@@ -76,7 +78,15 @@ def _print_playbacks(items: list[dict[str, Any]]) -> None:
 
 def _client(args: argparse.Namespace) -> KoushareClient:
     authorization = args.token or os.getenv("KOUSHARE_TOKEN")
-    return KoushareClient(authorization=authorization, api_base=args.api_base, timeout=args.timeout)
+    store = CredentialStore()
+    credentials = None if authorization else store.load()
+    return KoushareClient(
+        authorization=authorization,
+        credentials=credentials,
+        credential_store=store if credentials else None,
+        api_base=args.api_base,
+        timeout=args.timeout,
+    )
 
 
 def _legacy_client(args: argparse.Namespace) -> LegacyClient:
@@ -92,9 +102,17 @@ def _resolve_current(
 ) -> list[ResolvedVideo]:
     if target.kind == "video":
         assert target.video_id
-        secret = client.video_secret(target.video_id)
-        info = client.video_info(target.video_id, secret=secret)
-        playback = client.video_playback(target.video_id, secret=secret)
+        ticket = target.ticket or ""
+        info = client.video_info_v2(target.video_id)
+        free_urls = info.get("freeUrlList")
+        if not client.is_authenticated and not ticket and isinstance(free_urls, list) and free_urls:
+            playback = {"playbackUrls": free_urls}
+        else:
+            access = client.video_access(target.video_id, ticket=ticket)
+            secret = access.get("secret")
+            if secret:
+                info = client.video_info_v2(target.video_id, secret=str(secret))
+            playback = client.video_playback_v2(target.video_id, ticket=ticket)
         title = _video_title(info, f"koushare_{target.video_id}")
         return [ResolvedVideo(target.video_id, title, playback, item=info)]
 
@@ -524,6 +542,83 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0 if ready else 2
 
 
+def cmd_auth_login(args: argparse.Namespace) -> int:
+    password = os.getenv("KOUSHARE_PASSWORD")
+    if args.password_stdin:
+        password = sys.stdin.readline().rstrip("\r\n")
+    elif password is None:
+        if not sys.stdin.isatty():
+            raise KoushareError(
+                "no interactive terminal for password; use --password-stdin or KOUSHARE_PASSWORD"
+            )
+        password = getpass.getpass("Koushare password: ")
+    credentials = KoushareClient.login(
+        args.username,
+        password,
+        area_code=args.area_code,
+        api_base=args.api_base,
+        timeout=args.timeout,
+    )
+    store = CredentialStore()
+    store.save(credentials)
+    result = {
+        "ok": True,
+        "authenticated": True,
+        "username": credentials.username,
+        "auth_file": str(store.path),
+        "access_expires_at": credentials.access_expires_at,
+        "refresh_expires_at": credentials.refresh_expires_at,
+    }
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"Logged in as {credentials.username}; credentials saved to {store.path}")
+    return 0
+
+
+def cmd_auth_status(args: argparse.Namespace) -> int:
+    store = CredentialStore()
+    credentials = store.load()
+    if credentials and credentials.access_expired() and not credentials.refresh_expired():
+        client = KoushareClient(
+            credentials=credentials,
+            credential_store=store,
+            api_base=args.api_base,
+            timeout=args.timeout,
+        )
+        credentials = client.refresh_auth()
+    result = {
+        "ok": credentials is not None and not credentials.refresh_expired(),
+        "authenticated": credentials is not None and not credentials.refresh_expired(),
+        "username": credentials.username if credentials else None,
+        "auth_file": str(store.path),
+        "access_expired": credentials.access_expired() if credentials else None,
+        "refresh_expired": credentials.refresh_expired() if credentials else None,
+        "access_expires_at": credentials.access_expires_at if credentials else None,
+        "refresh_expires_at": credentials.refresh_expires_at if credentials else None,
+    }
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif credentials:
+        state = "ready" if result["authenticated"] else "expired"
+        print(f"Authentication: {state} ({credentials.username or 'unknown account'})")
+        print(f"Credential file: {store.path}")
+    else:
+        print("Authentication: not logged in")
+    return 0 if result["authenticated"] else 1
+
+
+def cmd_auth_logout(args: argparse.Namespace) -> int:
+    store = CredentialStore()
+    removed = store.clear()
+    result = {"ok": True, "authenticated": False, "removed": removed, "auth_file": str(store.path)}
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print("Saved Koushare credentials removed." if removed else "No saved Koushare credentials.")
+    return 0
+
+
 def _add_selection_options(parser: argparse.ArgumentParser) -> None:
     pick = parser.add_mutually_exclusive_group()
     pick.add_argument("--video-id")
@@ -573,6 +668,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=20.0, help="HTTP timeout in seconds (default: 20)")
 
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p_auth = sub.add_parser("auth", help="log in, inspect, or remove saved account credentials")
+    auth_sub = p_auth.add_subparsers(dest="auth_command", required=True)
+    p_auth_login = auth_sub.add_parser("login", help="log in with a phone number or email and save refreshable tokens")
+    p_auth_login.add_argument("--username", required=True, help="Koushare phone number or email address")
+    p_auth_login.add_argument("--area-code", default="86", help="phone country code without + (default: 86)")
+    p_auth_login.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="read one password line from stdin; otherwise prompt securely or use KOUSHARE_PASSWORD",
+    )
+    p_auth_login.add_argument("--json", action="store_true")
+    p_auth_login.set_defaults(func=cmd_auth_login)
+
+    p_auth_status = auth_sub.add_parser("status", help="show login state and refresh an expired access token")
+    p_auth_status.add_argument("--json", action="store_true")
+    p_auth_status.set_defaults(func=cmd_auth_status)
+
+    p_auth_logout = auth_sub.add_parser("logout", help="delete locally saved tokens")
+    p_auth_logout.add_argument("--json", action="store_true")
+    p_auth_logout.set_defaults(func=cmd_auth_logout)
 
     p_list = sub.add_parser("list", help="list replay videos attached to a live page")
     p_list.add_argument("target", help="live/details URL, live:<id>, or bare live id")

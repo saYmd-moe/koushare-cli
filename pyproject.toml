@@ -1,21 +1,24 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "koushare-cli"
-version = "0.2.0"
+version = "0.3.0"
 description = "A small CLI for inspecting and downloading Koushare videos and live replays you can access."
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{name = "saYmd-moe"}]
-dependencies = ["requests>=2.31"]
+dependencies = [
+  "platformdirs>=4.0",
+  "requests>=2.31",
+]
 keywords = ["koushare", "hls", "m3u8", "cli", "video"]
 
 classifiers = [
   "Environment :: Console",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -25,7 +28,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["build>=1.2", "pytest>=8", "twine>=5"]
 
 [project.scripts]
 ksdl = "koushare_cli.cli:main"

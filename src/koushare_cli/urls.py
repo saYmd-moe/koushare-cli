@@ -13,6 +13,7 @@ class Target:
     live_id: str | None = None
     video_id: str | None = None
     room_id: str | None = None
+    ticket: str | None = None
 
 
 def parse_target(value: str) -> Target:
@@ -44,11 +45,19 @@ def parse_target(value: str) -> Target:
     if live:
         query = parse_qs(parsed.query)
         video_id = (query.get("vid") or query.get("videoId") or [None])[0]
-        return Target("live", live_id=live.group(1), video_id=str(video_id) if video_id else None)
+        ticket = (query.get("ticket") or [None])[0]
+        return Target(
+            "live",
+            live_id=live.group(1),
+            video_id=str(video_id) if video_id else None,
+            ticket=str(ticket) if ticket else None,
+        )
 
     video = re.search(r"/video/(?:details|videodetail)/([0-9]+)", parsed.path, re.I)
     if video:
-        return Target("video", video_id=video.group(1))
+        query = parse_qs(parsed.query)
+        ticket = (query.get("ticket") or [None])[0]
+        return Target("video", video_id=video.group(1), ticket=str(ticket) if ticket else None)
 
     room = re.search(r"/lives?/room/([0-9]+)", parsed.path, re.I)
     if room:

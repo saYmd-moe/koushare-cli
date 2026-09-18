@@ -1,5 +1,18 @@
 # ksdl command reference for agents
 
+## Authentication
+
+```bash
+ksdl auth login --username ACCOUNT [--area-code 86] [--password-stdin] [--json]
+ksdl auth status [--json]
+ksdl auth logout [--json]
+```
+
+Interactive login prompts without echoing the password. For automation, use
+`--password-stdin`. The password is not persisted; access and refresh tokens are
+stored in the platform-standard private config directory and refreshed
+automatically. `KOUSHARE_AUTH_FILE` overrides the complete path.
+
 ## Targets
 
 Accepted target forms include:

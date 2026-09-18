@@ -29,13 +29,35 @@ Python 3.10+ is required. For actual downloads, install either `ffmpeg`
 (recommended) or `yt-dlp`.
 
 ```bash
-# Arch Linux
+# Linux (Arch example)
 sudo pacman -S ffmpeg python-pipx
 pipx install .
 
 # macOS
 brew install ffmpeg pipx
 pipx install .
+```
+
+Windows PowerShell, after installing Python and FFmpeg with your preferred
+package manager:
+
+```powershell
+py -m pip install --user pipx
+py -m pipx ensurepath
+pipx install .
+```
+
+Installing directly from GitHub works on Linux, macOS, and Windows:
+
+```bash
+pipx install 'git+https://github.com/saYmd-moe/koushare-cli.git'
+```
+
+Upgrade or uninstall through the same tool:
+
+```bash
+pipx upgrade koushare-cli
+pipx uninstall koushare-cli
 ```
 
 For development:
@@ -237,17 +259,58 @@ A bare integer is treated as a current **live id**.
 
 ## Authentication
 
-Public videos need no token. If a video is accessible to your logged-in account
-but not anonymously, pass the same Authorization value used by the current web
-client:
+Log in once with the same phone number or email and password you use on the
+Koushare website:
 
 ```bash
-export KOUSHARE_TOKEN='Bearer ...'
-ksdl download URL
+ksdl auth login --username 'person@example.com'
 ```
 
-`--token` is also supported, but an environment variable avoids leaving the
-credential in shell history.
+The password is read by a hidden terminal prompt. Phone accounts default to
+country code `86`:
+
+```bash
+ksdl auth login --username '13800138000' --area-code 86
+```
+
+For a non-interactive agent or script, pass the password over stdin rather than
+putting it in the process arguments:
+
+```bash
+printf '%s\n' "$KOUSHARE_PASSWORD" |
+  ksdl auth login --username "$KOUSHARE_USERNAME" --password-stdin --json
+```
+
+The password is sent only to Koushare's account-login endpoint and is never
+saved. The returned access and refresh tokens are stored in the operating
+system's standard per-user configuration directory:
+
+```text
+Linux:   $XDG_CONFIG_HOME/koushare-cli/auth.json
+         or ~/.config/koushare-cli/auth.json
+macOS:   ~/Library/Application Support/koushare-cli/auth.json
+Windows: %LOCALAPPDATA%\koushare-cli\auth.json
+```
+
+On POSIX systems the file is written with mode `0600`. Windows uses the normal
+per-user AppData ACLs instead of emulating Unix mode bits. Override the complete
+path on any platform with `KOUSHARE_AUTH_FILE`.
+
+Inspect or remove the saved login with:
+
+```bash
+ksdl auth status --json
+ksdl auth logout --json
+```
+
+Normal commands load the saved access token automatically. When it expires,
+`ksdl` uses the saved refresh token to obtain and atomically persist a new token
+pair. It also sends the current web client's `Client`, `Ks-Sign`, and
+`Ks-Timestamp` headers and uses the V2 video authorization/playback endpoints.
+
+For backwards compatibility, `KOUSHARE_TOKEN` and `--token` still override the
+saved login. The value is the web client's raw access token; do not add a
+`Bearer ` prefix.
 
 Old `/lives/room/<roomId>` links use a separate legacy API. For an old account
 cookie, use `KOUSHARE_LEGACY_TOKEN`. Password-protected rooms accept a password
@@ -283,6 +346,15 @@ You can also choose another destination explicitly:
 ./scripts/install-skill.sh ~/.pi/agent/skills/koushare-cli
 ```
 
+On Windows PowerShell, use the copy-based installer, which does not require
+Developer Mode or permission to create symbolic links:
+
+```powershell
+.\scripts\install-skill.ps1
+```
+
+Both installers refuse to overwrite an existing Skill directory.
+
 The skill instructs an agent to use `list -> plan -> download`, prefer JSON,
 avoid silent selection when a live page contains several talks, use deterministic
 filename templates, and keep credentials/signed media URLs out of logs.
@@ -290,6 +362,9 @@ filename templates, and keep credentials/signed media URLs out of logs.
 ## Commands
 
 ```text
+ksdl auth login --username ACCOUNT [--area-code CODE] [--password-stdin] [--json]
+ksdl auth status [--json]
+ksdl auth logout [--json]
 ksdl doctor [--json]
 ksdl list TARGET [--json]
 ksdl info TARGET [--video-id ID] [--json]
@@ -312,7 +387,7 @@ modern resolver while returning to a small Unix-like CLI.
 
 ## Status
 
-This is a `0.2.0` implementation. The request signing and endpoint layout are
+This is a `0.3.0` implementation. The request signing and endpoint layout are
 based on the current open-source client behavior as of September 2026. Koushare
 can change its private web API at any time.
 

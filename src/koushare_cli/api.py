@@ -9,6 +9,7 @@ from typing import Any
 import requests
 
 from . import __version__
+from .auth import CredentialStore, Credentials
 from .errors import ApiError
 
 
@@ -25,21 +26,85 @@ class KoushareClient:
         api_base: str | None = None,
         timeout: float = 20.0,
         session: requests.Session | None = None,
+        credentials: Credentials | None = None,
+        credential_store: CredentialStore | None = None,
     ) -> None:
         self.api_base = (api_base or self.API_BASE).rstrip("/")
         self.timeout = timeout
         self.session = session or requests.Session()
+        self.credentials = credentials
+        self.credential_store = credential_store
         self.session.headers.update(
             {
                 "User-Agent": f"Mozilla/5.0 (compatible; koushare-cli/{__version__})",
                 "Referer": "https://www.koushare.com/",
                 "Origin": "https://www.koushare.com",
-                "client": "front_web",
+                "Client": "front_web",
                 "Accept": "application/json, text/plain, */*",
             }
         )
         if authorization:
             self.session.headers["Authorization"] = authorization
+        elif credentials:
+            self.session.headers["Authorization"] = credentials.access_token
+
+    @property
+    def is_authenticated(self) -> bool:
+        return bool(self.session.headers.get("Authorization"))
+
+    @classmethod
+    def login(
+        cls,
+        username: str,
+        password: str,
+        *,
+        area_code: str = "86",
+        api_base: str | None = None,
+        timeout: float = 20.0,
+        session: requests.Session | None = None,
+    ) -> Credentials:
+        username = username.strip()
+        if not username or not password:
+            raise ApiError("username and password are required")
+        body: dict[str, Any] = {"username": username, "password": password, "flag": False}
+        if "@" not in username:
+            body["areaCode"] = area_code.lstrip("+")
+        client = cls(api_base=api_base, timeout=timeout, session=session)
+        payload = client._post("/iam/userLogin/accountLogin", body=body)
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise ApiError(str(payload.get("msg") or "login failed"))
+        return Credentials.from_login_data(data, username=username)
+
+    def _set_credentials(self, credentials: Credentials) -> None:
+        self.credentials = credentials
+        self.session.headers["Authorization"] = credentials.access_token
+        if self.credential_store:
+            self.credential_store.save(credentials)
+
+    def refresh_auth(self) -> Credentials:
+        if not self.credentials or not self.credentials.refresh_token:
+            raise ApiError("not logged in; run `ksdl auth login --username <account>`")
+        if self.credentials.refresh_expired():
+            raise ApiError("saved login has expired; run `ksdl auth login` again")
+        headers = self.signed_headers({}, "GET")
+        headers["Authorization"] = self.credentials.refresh_token
+        response = self.session.get(
+            f"{self.api_base}/iam/userLogin/refreshtoken",
+            headers=headers,
+            timeout=self.timeout,
+        )
+        payload = self._payload(response)
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise ApiError(str(payload.get("msg") or "token refresh failed"))
+        refreshed = Credentials.from_login_data(data, username=self.credentials.username)
+        self._set_credentials(refreshed)
+        return refreshed
+
+    def _ensure_auth(self) -> None:
+        if self.credentials and self.credentials.access_expired():
+            self.refresh_auth()
 
     @classmethod
     def make_signature(
@@ -89,7 +154,14 @@ class KoushareClient:
             return data
         raise ApiError(f"unexpected API response: {type(data).__name__}")
 
-    def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _get(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        *,
+        _retry_auth: bool = True,
+    ) -> dict[str, Any]:
+        self._ensure_auth()
         params = params or {}
         response = self.session.get(
             f"{self.api_base}{path}",
@@ -97,7 +169,11 @@ class KoushareClient:
             headers=self.signed_headers(params, "GET"),
             timeout=self.timeout,
         )
-        return self._payload(response)
+        payload = self._payload(response)
+        if _retry_auth and self.credentials and int(payload.get("code", 0) or 0) in {100005, 100009}:
+            self.refresh_auth()
+            return self._get(path, params, _retry_auth=False)
+        return payload
 
     def _post(
         self,
@@ -106,7 +182,9 @@ class KoushareClient:
         params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
         sign_params: dict[str, Any] | None = None,
+        _retry_auth: bool = True,
     ) -> dict[str, Any]:
+        self._ensure_auth()
         params = params or {}
         body = body or {}
         signing = sign_params if sign_params is not None else (params or body)
@@ -117,7 +195,17 @@ class KoushareClient:
             headers=self.signed_headers(signing, "POST"),
             timeout=self.timeout,
         )
-        return self._payload(response)
+        payload = self._payload(response)
+        if _retry_auth and self.credentials and int(payload.get("code", 0) or 0) in {100005, 100009}:
+            self.refresh_auth()
+            return self._post(
+                path,
+                params=params,
+                body=body,
+                sign_params=sign_params,
+                _retry_auth=False,
+            )
+        return payload
 
     def live_info(self, live_id: str) -> dict[str, Any]:
         data = self._get(f"/live/v2/live/{live_id}").get("data")
@@ -158,6 +246,43 @@ class KoushareClient:
         if not secret:
             raise ApiError("video authorization did not return a secret; authentication may be required")
         return str(secret)
+
+    def video_access(self, video_id: str, *, ticket: str = "", password: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"id": video_id, "ticket": ticket}
+        if password:
+            body["password"] = password
+        payload = self._post("/video/v1/video/checkVideoAuthV2", body=body)
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise ApiError(str(payload.get("msg") or "video authorization failed"))
+        code = int(data.get("code", 0) or 0)
+        if code != 200000:
+            messages = {
+                400021: "login required",
+                500001: "this video is restricted to followers",
+                500002: "this video must be purchased by the logged-in account",
+                500003: "this video requires a valid access code",
+                500004: "this video is restricted to members",
+                2000010: "the account must bind a phone number",
+            }
+            raise ApiError(messages.get(code, str(data.get("msg") or f"video access denied ({code})")))
+        return data
+
+    def video_info_v2(self, video_id: str, *, secret: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {"id": video_id}
+        if secret:
+            params["secret"] = secret
+        data = self._get("/video/v1/video/infoV2", params).get("data")
+        return data if isinstance(data, dict) else {}
+
+    def video_playback_v2(self, video_id: str, *, ticket: str = "") -> dict[str, Any]:
+        params = {"videoId": video_id, "ticket": ticket}
+        data = self._get("/video/v1/video/getVideoPlayAddressV2", params).get("data")
+        if isinstance(data, list):
+            return {"playbackUrls": data}
+        if isinstance(data, dict):
+            return data
+        return {"playbackUrls": []}
 
     def video_info(self, video_id: str, *, secret: str | None = None) -> dict[str, Any]:
         secret = secret or self.video_secret(video_id)

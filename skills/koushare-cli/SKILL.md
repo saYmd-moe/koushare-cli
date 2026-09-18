@@ -70,14 +70,30 @@ The default filename is `{title} [{video_id}].{ext}`. Filename-invalid path char
 
 ## Authentication and safety
 
-Prefer environment variables over command-line credentials:
+Check the saved login before requesting credentials:
 
 ```bash
-export KOUSHARE_TOKEN='Bearer ...'
-export KOUSHARE_LEGACY_TOKEN='...'
+ksdl auth status --json
 ```
 
-Never print, log, or persist those credential values. `ksdl resolve` may expose a signed media URL, so use it only when the actual media URL is necessary. For ordinary downloads, prefer `download --json`, whose result does not include the signed media URL.
+When login is required, ask for the account name and arrange for the password to
+be entered through the hidden interactive prompt. For non-interactive use, pass
+it over stdin with `--password-stdin`; never put a password in command arguments:
+
+```bash
+ksdl auth login --username 'ACCOUNT'
+printf '%s\n' "$KOUSHARE_PASSWORD" | ksdl auth login --username "$KOUSHARE_USERNAME" --password-stdin --json
+```
+
+The CLI saves only refreshable tokens in a mode-`0600` auth file and never saves
+the password. Do not read, print, log, or copy the token file. Use
+`ksdl auth logout --json` when the user asks to remove the saved login.
+
+`KOUSHARE_TOKEN` remains a manual compatibility override and must contain the raw
+web access token without a `Bearer ` prefix. `KOUSHARE_LEGACY_TOKEN` is separate
+and applies only to old room URLs.
+
+`ksdl resolve` may expose a signed media URL, so use it only when the actual media URL is necessary. For ordinary downloads, prefer `download --json`, whose result does not include the signed media URL.
 
 Only retrieve content the user can normally access. Do not attempt to bypass payment, passwords, DRM, or account authorization.
 

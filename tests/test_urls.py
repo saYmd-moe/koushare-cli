@@ -23,6 +23,12 @@ def test_video_url():
     assert target.video_id == "123"
 
 
+def test_video_details_preserves_ticket():
+    target = parse_target("https://www.koushare.com/video/details/900002?ticket=abc123")
+    assert target.video_id == "900002"
+    assert target.ticket == "abc123"
+
+
 def test_legacy_room():
     target = parse_target("https://www.koushare.com/lives/room/987")
     assert target.kind == "legacy-room"
