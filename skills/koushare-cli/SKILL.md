@@ -54,8 +54,9 @@ Use `ksdl` non-interactively. Prefer `--json` whenever the result will be consum
      --skip-existing --write-info-json --json
    ```
 
-   Use `--write-sidecars` instead of `--write-info-json` when the user also
-   wants every available cover, description, and subtitle/caption file.
+   Sidecars and per-video subdirectories are enabled by default. Add
+   `--no-write-sidecars` only when the user wants media alone, or `--no-subdir`
+   only when the user wants a flat output layout.
 
 5. Treat exit code `0` as success. With `--json`, parse stdout for successful results. On known failures, `ksdl` exits with code `2` and writes a JSON error object to stderr.
 
@@ -66,6 +67,12 @@ Choose exactly one output mode:
 - `--path /full/path/file.mp4`: exact location for one selected video.
 - `--dir DIR --name FILE`: directory plus a literal filename for one selected video.
 - `--dir DIR --template TEMPLATE`: metadata-based naming, suitable for one or many videos.
+
+If `--dir` is omitted, the current directory is used. By default, `--subdir`
+groups each video and its sidecars in a same-named folder, and
+`--write-sidecars` saves metadata, cover, description, and available subtitles.
+Use `--no-subdir` for a flat layout or `--no-write-sidecars` for media only.
+An exact `--path` is never wrapped in a subdirectory.
 
 Useful template fields are `{title}`, `{video_id}`, `{live_id}`, `{room_id}`, `{live_title}`, `{quality}`, `{height}`, `{index}`, `{date}`, `{speaker}`, and `{ext}`. Use `ksdl plan ... --json` to inspect the `name_context` before relying on optional fields such as `speaker` or `date`.
 

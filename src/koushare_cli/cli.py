@@ -203,6 +203,12 @@ def _download_output_dir(args: argparse.Namespace) -> Path:
     return Path(value).expanduser().resolve()
 
 
+def _output_path(output_dir: Path, filename: str, *, subdir: bool) -> Path:
+    if not subdir:
+        return output_dir / filename
+    return output_dir / Path(filename).stem / filename
+
+
 def _validate_output_args(args: argparse.Namespace, count: int) -> None:
     if getattr(args, "path", None):
         if count != 1:
@@ -258,7 +264,11 @@ def _planned_rows(
             else:
                 template = getattr(args, "template", None) or DEFAULT_TEMPLATE
                 filename = render_filename(template, context, fallback=f"koushare_{video.video_id}")
-            output = output_dir / filename
+            output = _output_path(
+                output_dir,
+                filename,
+                subdir=getattr(args, "subdir", True),
+            )
 
         rows.append(
             {
@@ -305,7 +315,11 @@ def _legacy_plan(target: Target, args: argparse.Namespace, *, source: str) -> li
         else:
             template = getattr(args, "template", None) or "{title} [room-{room_id}].{ext}"
             filename = render_filename(template, context, fallback=f"room_{target.room_id}")
-        output = _download_output_dir(args) / filename
+        output = _output_path(
+            _download_output_dir(args),
+            filename,
+            subdir=getattr(args, "subdir", True),
+        )
     return [
         {
             "video_id": target.room_id,
@@ -709,6 +723,12 @@ def _add_download_path_options(parser: argparse.ArgumentParser) -> None:
             "{room_id}, {live_title}, {quality}, {height}, {index}, {date}, {speaker}, {ext}"
         ),
     )
+    parser.add_argument(
+        "--subdir",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="place each video and its sidecars in a same-named subdirectory (default: enabled)",
+    )
 
 
 def _add_common_media_options(parser: argparse.ArgumentParser) -> None:
@@ -790,8 +810,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_download.add_argument("--write-subs", action="store_true", help="save subtitle/caption files exposed by Koushare, if any")
     p_download.add_argument(
         "--write-sidecars",
-        action="store_true",
-        help="save info JSON, cover, description, and any available subtitles",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="save info JSON, cover, description, and any available subtitles (default: enabled)",
     )
     p_download.add_argument("--dry-run", action="store_true", help="resolve selections and output paths but do not download")
     p_download.add_argument("--quiet", action="store_true", help="suppress downloader progress output")

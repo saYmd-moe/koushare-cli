@@ -62,6 +62,7 @@ def test_plan_all_with_metadata_template(monkeypatch, capsys, tmp_path):
     data = json.loads(capsys.readouterr().out)
     assert data["ok"] is True
     assert data["items"][0]["path"].endswith("01 - Alice - First _ Talk [101].mp4")
+    assert Path(data["items"][0]["path"]).parent.name == "01 - Alice - First _ Talk [101]"
     assert data["items"][1]["path"].endswith("02 - Bob - Second Talk [102].mp4")
     assert "token=secret" not in data["items"][0]["media_url"]
 
@@ -150,3 +151,26 @@ def test_meaningful_replay_title_is_not_changed():
         )
         == "Invited Talk"
     )
+
+
+def test_download_defaults_enable_subdirectory_and_sidecars():
+    args = cli.build_parser().parse_args(["download", "video:700001"])
+    assert args.output_dir is None
+    assert args.subdir is True
+    assert args.write_sidecars is True
+
+
+def test_download_defaults_can_be_disabled():
+    args = cli.build_parser().parse_args(
+        ["download", "video:700001", "--no-subdir", "--no-write-sidecars"]
+    )
+    assert args.subdir is False
+    assert args.write_sidecars is False
+
+
+def test_output_path_supports_nested_and_flat_layouts(tmp_path):
+    filename = "Formatted Talk [700001].mp4"
+    assert cli._output_path(tmp_path, filename, subdir=True) == (
+        tmp_path / "Formatted Talk [700001]" / filename
+    )
+    assert cli._output_path(tmp_path, filename, subdir=False) == tmp_path / filename

@@ -191,6 +191,11 @@ ext
 
 Optional metadata fields such as `speaker` and `date` can be empty. Run `plan --json` and inspect `name_context` when their presence matters.
 
+The base output directory defaults to the current working directory. `--subdir`
+is enabled by default and creates one same-named directory per video; use
+`--no-subdir` for a flat layout. `--path` is exact and bypasses subdirectory
+grouping.
+
 ## Existing files
 
 Default behavior is conservative and does not overwrite. For repeatable agent workflows, prefer:
@@ -203,9 +208,11 @@ Use `--overwrite` only when the user explicitly wants replacement.
 
 ## Metadata sidecars
 
+`--write-sidecars` is enabled by default. It saves info JSON, the available cover, HTML description, and subtitle/caption files. Use `--no-write-sidecars` to download only the media file.
+
 `--write-info-json` writes `<video>.mp4.info.json`. The sidecar contains normalized download metadata plus Koushare metadata used for naming. It intentionally does not persist the signed playback URL.
 
-`--write-sidecars` also saves the available cover, HTML description, and subtitle/caption files. Use `--write-cover`, `--write-description`, or `--write-subs` to request them individually. Optional assets that are not exposed by Koushare are skipped without failing the video download.
+After `--no-write-sidecars`, use `--write-info-json`, `--write-cover`, `--write-description`, or `--write-subs` to request selected outputs individually. Optional assets that are not exposed by Koushare are skipped without failing the video download.
 
 ## Exit codes
 

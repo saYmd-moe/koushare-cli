@@ -175,6 +175,21 @@ The default template is:
 {title} [{video_id}].{ext}
 ```
 
+When `--dir` is omitted, the base directory is the current working directory.
+By default, each video and all of its sidecars are grouped in a same-named
+subdirectory:
+
+```text
+./Example talk [VIDEO_ID]/
+  Example talk [VIDEO_ID].mp4
+  Example talk [VIDEO_ID].mp4.info.json
+  Example talk [VIDEO_ID].cover.png
+  Example talk [VIDEO_ID].description.html
+```
+
+Use `--no-subdir` for the previous flat layout. An exact `--path` always remains
+exact and is never wrapped in an additional subdirectory.
+
 Filename-invalid path characters are sanitized. Directory separators belong in
 `--dir` or `--path`, not inside `--name` or `--template`.
 
@@ -214,7 +229,7 @@ A successful download returns a stable object like:
       "title": "Example talk",
       "quality": "FHD",
       "height": 1080,
-      "path": "/data/Example talk [VIDEO_ID].mp4",
+      "path": "/data/Example talk [VIDEO_ID]/Example talk [VIDEO_ID].mp4",
       "backend": "ffmpeg"
     }
   ]
@@ -227,20 +242,19 @@ written to stderr as JSON. `Ctrl-C` exits with `130`.
 For repeatable agent workflows, use `--skip-existing`. Use `--overwrite` only
 when replacement is intentional.
 
-Write a metadata sidecar without persisting the signed media URL:
+Sidecar saving is enabled by default. A normal download attempts to save the
+info JSON, cover, description, and any exposed subtitles alongside the video:
 
 ```bash
 ksdl download URL --video-id VIDEO_ID --dir /data \
-  --skip-existing --write-info-json --json
+  --skip-existing --json
 ```
 
-This creates `video.mp4.info.json` next to the media file.
-
-Save every available sidecar in one operation:
+Disable all automatic sidecars when only the media file is wanted:
 
 ```bash
 ksdl download URL --video-id VIDEO_ID --dir /data \
-  --skip-existing --write-sidecars
+  --no-write-sidecars
 ```
 
 Depending on what Koushare exposes for that item, this creates files such as:
@@ -253,8 +267,10 @@ Example talk [VIDEO_ID].description.html
 Example talk [VIDEO_ID].subtitle-1.vtt
 ```
 
-The equivalent granular switches are `--write-info-json`, `--write-cover`,
-`--write-description`, and `--write-subs`. Missing optional data is skipped:
+`--write-sidecars` and `--subdir` can be stated explicitly but are already the
+defaults. The granular switches `--write-info-json`, `--write-cover`,
+`--write-description`, and `--write-subs` can add selected outputs after
+`--no-write-sidecars`. Missing optional data is skipped:
 for example, `--write-subs` succeeds without creating a subtitle file when the
 API does not expose one. Sidecars use the final sanitized/template-rendered
 video basename, so batch naming remains consistent across Linux, macOS, and
@@ -399,10 +415,12 @@ ksdl list TARGET [--json]
 ksdl info TARGET [--video-id ID] [--json]
 ksdl resolve TARGET [--video-id ID | --all] [-q QUALITY] [--json]
 ksdl plan TARGET [--video-id ID | --all] [-q QUALITY]
-          [--path FILE | --dir DIR [--name FILE | --template TEMPLATE]] [--json]
+          [--path FILE | --dir DIR [--name FILE | --template TEMPLATE]]
+          [--subdir | --no-subdir] [--json]
 ksdl download TARGET [--video-id ID | --all] [-q QUALITY]
               [--path FILE | --dir DIR [--name FILE | --template TEMPLATE]]
-              [--skip-existing | --overwrite] [--write-info-json] [--json]
+              [--subdir | --no-subdir] [--skip-existing | --overwrite]
+              [--write-sidecars | --no-write-sidecars] [--json]
 ```
 
 Run `ksdl COMMAND --help` for all options.
@@ -416,7 +434,7 @@ modern resolver while returning to a small Unix-like CLI.
 
 ## Status
 
-This is a `0.3.0` implementation. The request signing and endpoint layout are
+This is a `0.5.0` implementation. The request signing and endpoint layout are
 based on the current open-source client behavior as of September 2026. Koushare
 can change its private web API at any time.
 
